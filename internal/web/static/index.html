@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>钢琴档案 · 压缩位图索引</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a5;--acc:#5aa9ff;--ok:#46c98b;--warn:#e5a54b;--bad:#e0607e}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.5 -apple-system,"SF Mono",Menlo,Consolas,"PingFang SC","Microsoft YaHei",monospace;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:baseline;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;font-weight:600}
+header .stat{color:var(--dim)}
+header .stat b{color:var(--fg);font-weight:600}
+main{display:grid;grid-template-columns:minmax(420px,1.25fr) minmax(360px,1fr);gap:0;height:calc(100vh - 51px)}
+.col{overflow:auto;padding:16px 20px}
+.col+.col{border-left:1px solid var(--line)}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:22px 0 8px;font-weight:600}
+h2:first-child{margin-top:0}
+textarea{width:100%;height:96px;background:#0b0d11;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px;font:inherit;resize:vertical}
+textarea:focus{outline:1px solid var(--acc)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+button{background:#222836;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);color:#08111f;border-color:var(--acc);font-weight:600}
+input,select{background:#0b0d11;color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font:inherit}
+.chip{display:inline-block;padding:2px 7px;border:1px solid var(--line);border-radius:99px;color:var(--dim);cursor:pointer;margin:2px 2px 0 0;font-size:11px}
+.chip:hover{border-color:var(--acc);color:var(--fg)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td.num{text-align:right}
+.mono{font-variant-numeric:tabular-nums}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px}
+.tag.array{background:#1d2a3f;color:#7fb6ff}
+.tag.bitset{background:#2a2338;color:#c39bff}
+.tag.run{background:#1d3329;color:#5fdc9c}
+.bar{height:6px;border-radius:3px;background:#222836;overflow:hidden;position:relative;min-width:60px}
+.bar>i{display:block;height:100%;background:var(--acc)}
+.bar.slow>i{background:var(--bad)}
+.bar.mid>i{background:var(--warn)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 16px}
+.kv div:nth-child(odd){color:var(--dim)}
+.err{color:var(--bad);white-space:pre-wrap;padding:8px;border:1px solid var(--bad);border-radius:6px;background:#2a141a;margin-top:10px}
+.empty{color:var(--dim);padding:8px 0}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.tabs button{border:none;background:none;border-bottom:2px solid transparent;border-radius:0;padding:6px 10px;color:var(--dim)}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--acc)}
+.hint{color:var(--dim);font-size:11px}
+details{margin-top:6px}
+summary{cursor:pointer;color:var(--dim)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--dim);font-size:11px;margin:6px 0}
+.flexfill{flex:1}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+code{background:#0b0d11;padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <h1>钢琴档案 · 压缩位图索引</h1>
+  <span class="stat">档案 <b id="hPianos">–</b></span>
+  <span class="stat">存活行 <b id="hLive">–</b></span>
+  <span class="stat">位图 <b id="hBitmaps">–</b></span>
+  <span class="stat">索引内存 <b id="hMem">–</b></span>
+  <span class="stat">上次查询 <b id="hLast">–</b></span>
+</header>
+<main>
+  <section class="col">
+    <h2>条件组合查询</h2>
+    <textarea id="q" spellcheck="false">brand = Yamaha &amp; store = "北京朝阳旗舰店" &amp; status in ("在库可租","已租出") &amp; age between 10 .. 40 &amp; tuned &lt; 2022-01 &amp; crack = false</textarea>
+    <div class="row">
+      <button class="primary" id="run">查询 ⌘↵</button>
+      <input id="limit" type="number" value="50" min="1" max="500" style="width:72px" title="返回样例行数">
+      <span class="hint">语法：<code>&amp;</code> 与 · <code>|</code> 或 · <code>!</code> 非（全集=当前存活行）· 括号 · in (…) · between a .. b</span>
+    </div>
+    <div class="row" id="examples"></div>
+    <div id="qerr"></div>
+
+    <h2>运算耗时</h2>
+    <div id="timing" class="empty">尚未查询</div>
+
+    <h2>查询结果 <span class="hint" id="resCount"></span></h2>
+    <div id="results" class="empty">尚未查询</div>
+
+    <h2>最近查询</h2>
+    <table><thead><tr><th>时间</th><th>行数</th><th class="num">耗时</th><th>条件</th></tr></thead><tbody id="hist"></tbody></table>
+  </section>
+
+  <section class="col">
+    <div class="tabs" id="tabs">
+      <button data-tab="structure" class="on">位图结构</button>
+      <button data-tab="composition">容器构成</button>
+      <button data-tab="memory">内存占用</button>
+      <button data-tab="ops">范围与增删</button>
+    </div>
+
+    <div id="tab-structure">
+      <h2>选择位图</h2>
+      <div class="row">
+        <input id="bmName" class="flexfill" placeholder="如 brand=Yamaha / tuned&lt;2020-01 / age#3 / crack=true">
+        <input id="bmBuckets" type="number" value="64" style="width:72px" title="最多显示桶数">
+        <button id="bmGo">查看</button>
+      </div>
+      <div class="row" id="bmPick"></div>
+      <div id="bmOut" class="empty">选择一个位图查看各桶容器构成</div>
+    </div>
+
+    <div id="tab-composition" style="display:none">
+      <h2>各字段位图容器构成</h2>
+      <div class="legend">
+        <span class="tag array">array 有序数组</span>
+        <span class="tag bitset">bitset 定长位图</span>
+        <span class="tag run">run 游程</span>
+      </div>
+      <div id="compOut" class="empty">加载中…</div>
+    </div>
+
+    <div id="tab-memory" style="display:none">
+      <h2>索引内存</h2>
+      <div id="memOut" class="empty">加载中…</div>
+    </div>
+
+    <div id="tab-ops" style="display:none">
+      <h2>整段取反 / 置位（只动涉及的桶）</h2>
+      <div class="row">
+        <input id="rName" class="flexfill" value="all" placeholder="位图名">
+        <select id="rOp"><option value="flip">取反</option><option value="set">置位</option><option value="clear">清零</option></select>
+      </div>
+      <div class="row">
+        <input id="rLo" type="number" value="0" style="width:110px" placeholder="lo">
+        <span>..</span>
+        <input id="rHi" type="number" value="655360" style="width:110px" placeholder="hi">
+        <button id="rGo">执行</button>
+      </div>
+      <div id="rOut" class="empty">范围操作会跳过不相交的桶</div>
+
+      <h2>行的增删改（增量更新）</h2>
+      <div class="row">
+        <input id="mRow" type="number" value="0" style="width:80px" title="行号">
+        <select id="mAction"><option value="delete">删除</option><option value="update">改状态</option><option value="add">新增</option></select>
+        <button id="mGo">执行</button>
+      </div>
+      <div class="hint">改动后可在“容器构成”中观察容器类型随基数变化。</div>
+      <div id="mOut" class="empty"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const fmt=n=>n.toLocaleString('en-US');
+const bytes=n=>n>1048576?(n/1048576).toFixed(1)+' MiB':n>1024?(n/1024).toFixed(1)+' KiB':n+' B';
+const us=n=>n>=1000?(n/1000).toFixed(n>=10000?1:2)+' ms':n+' µs';
+let meta=null;
+
+async function jget(u){const r=await fetch(u);const t=await r.text();if(!r.ok)throw new Error(t);return JSON.parse(t)}
+
+async function loadMeta(){
+  meta=await jget('/api/meta');
+  $('#hPianos').textContent=fmt(meta.pianos);
+  $('#hLive').textContent=fmt(meta.live);
+  $('#hBitmaps').textContent=fmt(meta.memory.bitmapsCount);
+  $('#hMem').textContent=bytes(meta.memory.totalByte);
+  const ex=$('#examples');
+  meta.examples.forEach(e=>{
+    const b=document.createElement('span');b.className='chip';b.textContent=e;
+    b.onclick=()=>{$('#q').value=e;runQuery()};ex.appendChild(b);
+  });
+}
+
+function tag(k){return `<span class="tag ${k}">${k}</span>`}
+
+async function runQuery(){
+  const q=$('#q').value.trim();
+  $('#qerr').innerHTML='';
+  try{
+    const res=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q,limit:+$('#limit').value||50})});
+    const txt=await res.text();
+    if(!res.ok){$('#qerr').innerHTML='<div class="err">'+txt+'</div>';return}
+    const d=JSON.parse(txt);
+    renderTrace(d);renderRows(d);loadHistory();loadMeta();
+  }catch(e){$('#qerr').innerHTML='<div class="err">'+e.message+'</div>'}
+}
+
+function renderTrace(d){
+  const t=d.trace, max=Math.max(1,...t.steps.map(s=>s.micros));
+  let h=`<div class="kv" style="margin-bottom:10px">
+    <div>命中行数</div><div><b>${fmt(d.rows)}</b> / ${fmt(meta.live)}</div>
+    <div>总耗时</div><div class="${t.totalMicros>20000?'bad':t.totalMicros>5000?'warn':'ok'}"><b>${us(t.totalMicros)}</b></div>
+    <div>结果桶数</div><div>${fmt(t.bucketsTouched)}</div>
+    <div>结果容器</div><div>${tag('array')} ${d.stats.arrays} · ${tag('bitset')} ${d.stats.bitsets} · ${tag('run')} ${d.stats.runs}</div>
+    </div>`;
+  h+='<table><thead><tr><th>步骤</th><th class="num">耗时</th><th class="num">结果行</th><th></th><th>说明</th></tr></thead><tbody>';
+  t.steps.forEach(s=>{
+    const pct=Math.max(2,Math.round(s.micros/max*100));
+    const cls=s.micros>max*0.5&&max>2000?'slow':s.micros>max*0.25?'mid':'';
+    h+=`<tr><td>${s.op}</td><td class="num">${us(s.micros)}</td><td class="num">${fmt(s.result)}</td>
+      <td><div class="bar ${cls}"><i style="width:${pct}%"></i></div></td>
+      <td class="hint">${escapeHTML(s.detail)}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('#timing').className='';
+  $('#timing').innerHTML=h;
+  $('#hLast').textContent=us(t.totalMicros);
+}
+
+function escapeHTML(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function renderRows(d){
+  $('#resCount').textContent=`${fmt(d.rows)} 行，显示前 ${d.sample.length} 行`;
+  if(!d.sample.length){$('#results').className='empty';$('#results').textContent='没有匹配的档案';return}
+  let h='<table><thead><tr><th>行号</th><th>品牌</th><th>型号</th><th>门店</th><th>状态</th><th class="num">琴龄</th><th>上次调律</th><th>音板裂</th></tr></thead><tbody>';
+  d.sample.forEach(p=>{
+    h+=`<tr><td class="mono">${p.id}</td><td>${p.brand}</td><td>${p.model}</td><td>${escapeHTML(p.store)}</td>
+    <td>${p.status}</td><td class="num">${p.age}</td><td class="mono">${p.tunedMonth<0?'从未':monthLabel(p.tunedMonth)}</td>
+    <td>${p.hasCrack?'<span class="bad">是</span>':'<span class="ok">否</span>'}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('#results').className='';
+  $('#results').innerHTML=h;
+}
+
+function monthLabel(m){const y=2014+Math.floor(m/12),mo=m%12+1;return `${y}-${String(mo).padStart(2,'0')}`}
+
+async function loadHistory(){
+  const h=await jget('/api/history');
+  $('#hist').innerHTML=h.map(e=>`<tr><td class="mono">${e.at}</td><td class="num">${fmt(e.rows)}</td>
+    <td class="num ${e.micros>20000?'bad':e.micros>5000?'warn':''}">${us(e.micros)}</td>
+    <td class="hint" style="max-width:420px;overflow:hidden;text-overflow:ellipsis">${escapeHTML(e.query)}</td></tr>`).join('')
+    ||'<tr><td colspan="4" class="empty">暂无</td></tr>';
+}
+
+async function loadBitmap(){
+  const name=$('#bmName').value.trim();if(!name)return;
+  const b=await jget('/api/bitmap?name='+encodeURIComponent(name)+'&buckets='+(+$('#bmBuckets').value||64));
+  if(!b.exists){$('#bmOut').className='empty';$('#bmOut').textContent='未找到位图 '+name;return}
+  let h=`<div class="kv" style="margin-bottom:10px">
+    <div>基数</div><div><b>${fmt(b.cardinality)}</b></div>
+    <div>容器</div><div>${tag('array')} ${b.stats.arrays} · ${tag('bitset')} ${b.stats.bitsets} · ${tag('run')} ${b.stats.runs}</div>
+    <div>桶数</div><div>${fmt(b.stats.buckets)}</div>
+    <div>占用</div><div>${bytes(b.memoryByte)}</div></div>`;
+  h+='<table><thead><tr><th>桶(高16位)</th><th>行区间</th><th>类型</th><th class="num">基数</th><th class="num">密度</th><th class="num">游程</th><th class="num">字节</th></tr></thead><tbody>';
+  b.buckets.forEach(k=>{
+    h+=`<tr><td class="mono">${k.key}</td><td class="mono hint">${k.rowRange}</td><td>${tag(k.kind)}</td>
+    <td class="num">${fmt(k.cardinality)}</td><td class="num">${(k.density*100).toFixed(1)}%</td>
+    <td class="num">${k.runs||'–'}</td><td class="num">${bytes(k.sizeByte)}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  if(b.truncated)h+='<div class="hint" style="margin-top:6px">（仅显示前 '+b.buckets.length+' 个桶）</div>';
+  $('#bmOut').className='';$('#bmOut').innerHTML=h;
+}
+
+async function loadComposition(){
+  const d=await jget('/api/composition');
+  let h='';
+  d.forEach(f=>{
+    h+=`<details open><summary><b>${f.name}</b> · ${f.bitmaps.length} 张位图 · ${fmt(f.totals.sizeByte)}B · array ${f.totals.arrays} / bitset ${f.totals.bitsets} / run ${f.totals.runs}</summary>`;
+    h+='<table><thead><tr><th>位图</th><th class="num">行数</th><th class="num">桶</th><th class="num">array</th><th class="num">bitset</th><th class="num">run</th><th class="num">字节</th></tr></thead><tbody>';
+    f.bitmaps.slice(0,120).forEach(b=>{
+      h+=`<tr><td class="hint">${escapeHTML(b.name)}</td><td class="num">${fmt(b.stats.rows)}</td><td class="num">${b.stats.buckets}</td>
+      <td class="num">${b.stats.arrays||''}</td><td class="num">${b.stats.bitsets||''}</td><td class="num">${b.stats.runs||''}</td>
+      <td class="num">${bytes(b.stats.sizeByte)}</td></tr>`;
+    });
+    h+='</tbody></table></details>';
+  });
+  $('#compOut').className='';$('#compOut').innerHTML=h;
+}
+
+async function loadMemory(){
+  const d=await jget('/api/memory');
+  let h=`<div class="kv" style="margin-bottom:12px">
+    <div>位图总大小</div><div><b>${bytes(d.total-d.rowBytes)}</b></div>
+    <div>原始档案</div><div>${bytes(d.rowBytes)}（${fmt(d.pianos)} 条）</div>
+    <div>合计</div><div><b>${bytes(d.total)}</b></div>
+    <div>存活行</div><div>${fmt(d.liveRows)}</div></div>`;
+  const max=Math.max(...d.fields.map(f=>f.bytes),1);
+  h+='<table><thead><tr><th>字段</th><th class="num">位图数</th><th class="num">大小</th><th></th></tr></thead><tbody>';
+  d.fields.forEach(f=>{
+    h+=`<tr><td>${f.name}</td><td class="num">${f.bitmaps}</td><td class="num">${bytes(f.bytes)}</td>
+     <td><div class="bar" style="width:180px"><i style="width:${Math.round(f.bytes/max*100)}%"></i></div></td></tr>`;
+  });
+  h+='</tbody></table>';
+  const c=d.containers;
+  h+=`<div class="hint" style="margin-top:10px">全部容器：${fmt(c.buckets)} 个桶 · ${tag('array')} ${fmt(c.arrays)} · ${tag('bitset')} ${fmt(c.bitsets)} · ${tag('run')} ${fmt(c.runs)}</div>`;
+  $('#memOut').className='';$('#memOut').innerHTML=h;
+}
+
+async function runRange(){
+  const p=new URLSearchParams({name:$('#rName').value.trim(),op:$('#rOp').value,lo:$('#rLo').value,hi:$('#rHi').value});
+  const r=await fetch('/api/range?'+p);
+  const t=await r.text();
+  if(!r.ok){$('#rOut').className='err';$('#rOut').textContent=t;return}
+  const d=JSON.parse(t);
+  $('#rOut').className='';
+  $('#rOut').innerHTML=`<div class="kv"><div>跨桶</div><div>${fmt(d.bucketsSpanned)} 个（只处理这些）</div>
+    <div>基数</div><div>${fmt(d.before)} → <b>${fmt(d.after)}</b></div><div>耗时</div><div>${us(d.micros)}</div></div>`;
+  loadBitmap();loadMeta();
+}
+
+async function runMutate(){
+  let body={action:$('#mAction').value,row:+$('#mRow').value};
+  if(body.action!=='delete'){
+    body.piano={brand:'Yamaha',model:'Y-A1',store:'北京朝阳旗舰店',status:'在库可租',tunedMonth:142,hasCrack:false,age:12};
+  }
+  const r=await fetch('/api/mutate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const t=await r.text();
+  if(!r.ok){$('#mOut').className='err';$('#mOut').textContent=t;return}
+  const d=JSON.parse(t);
+  $('#mOut').className='';
+  $('#mOut').innerHTML=`<div class="kv"><div>存活行</div><div>${fmt(d.live)}</div>
+    <div>受影响位图</div><div>${d.changed.length} 张</div></div>`+
+    (d.changed.length?'<table><thead><tr><th>位图</th><th class="num">行</th><th class="num">array</th><th class="num">bitset</th><th class="num">run</th></tr></thead><tbody>'+
+    d.changed.slice(0,20).map(c=>`<tr><td class="hint">${escapeHTML(c.name)}</td><td class="num">${fmt(c.rows)}</td>
+      <td class="num">${c.array}</td><td class="num">${c.bitset}</td><td class="num">${c.run}</td></tr>`).join('')+'</tbody></table>':'');
+  loadMeta();loadComposition();
+}
+
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  ['structure','composition','memory','ops'].forEach(t=>$('#tab-'+t).style.display=t===b.dataset.tab?'':'none');
+  if(b.dataset.tab==='composition')loadComposition();
+  if(b.dataset.tab==='memory')loadMemory();
+  if(b.dataset.tab==='structure')loadBitmap();
+});
+$('#run').onclick=runQuery;
+$('#bmGo').onclick=loadBitmap;
+$('#rGo').onclick=runRange;
+$('#mGo').onclick=runMutate;
+$('#q').addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter')runQuery()});
+(async()=>{
+  await loadMeta();
+  $('#bmName').value='brand=Yamaha';
+  loadBitmap();loadHistory();
+  // populate quick picks
+  const picks=$('#bmPick');
+  ['all','crack=true','tuned=never','age>=50','tuned<2022-01'].forEach(n=>{
+    const s=document.createElement('span');s.className='chip';s.textContent=n;
+    s.onclick=()=>{$('#bmName').value=n;loadBitmap()};picks.appendChild(s);
+  });
+  runQuery();
+})();
+</script>
+</body>
+</html>
